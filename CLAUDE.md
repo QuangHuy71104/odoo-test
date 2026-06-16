@@ -8,13 +8,17 @@ Odoo 17.0 — a Python/PostgreSQL web ERP. The entry point is the `odoo-bin` scr
 
 ## Running the server
 
-PostgreSQL is installed via Scoop (no admin required). Must be started before Odoo.
+PostgreSQL is installed locally beside this repo at `D:\University\knowledgeManagementSystem\Postgres`.
+The active data directory is `D:\University\knowledgeManagementSystem\Postgres\data`.
+PostgreSQL must be running before Odoo.
 
 ```powershell
-# 1. Start PostgreSQL (Scoop install, data at scoop/apps/postgresql/current/data)
-pg_ctl -D "$env:USERPROFILE\scoop\apps\postgresql\current\data" -l "$env:USERPROFILE\scoop\apps\postgresql\current\data\postgresql.log" start
+# 1. Start PostgreSQL
+cd D:\University\knowledgeManagementSystem\Postgres
+.\bin\pg_ctl.exe -D .\data -l .\data\log\postgresql.log start
 
 # 2. Activate the venv
+cd D:\University\knowledgeManagementSystem\odoo-test
 .\venv\Scripts\Activate.ps1
 
 # 3. Start Odoo
@@ -23,10 +27,11 @@ python odoo-bin -c odoo.conf
 
 To stop PostgreSQL:
 ```powershell
-pg_ctl -D "$env:USERPROFILE\scoop\apps\postgresql\current\data" stop
+cd D:\University\knowledgeManagementSystem\Postgres
+.\bin\pg_ctl.exe -D .\data stop
 ```
 
-The local config (`odoo.conf`) connects to PostgreSQL on `localhost:5432`, database `odoo17`, user/password `odoo/odoo`, and serves on port `8069`.
+The local config (`odoo.conf`) connects to PostgreSQL on `localhost:5432`, database `TripleHandT`, user/password `odoo/odoo`, and serves on port `8069`.
 
 ## Running tests
 
