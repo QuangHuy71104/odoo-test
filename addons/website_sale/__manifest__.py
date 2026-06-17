@@ -44,6 +44,8 @@
         'views/website_sale_menus.xml',
         'views/website_sale_delivery_views.xml',
         'views/variant_templates.xml',
+        'views/product_views_inherit_ui.xml',
+        'data/product_seed_data.xml',
     ],
     'demo': [
         'data/demo.xml',
@@ -98,6 +100,7 @@
             'website_sale/static/src/js/tours/tour_utils.js',
             'website_sale/static/src/js/website_sale_video_field_preview.js',
             'website_sale/static/src/scss/website_sale_backend.scss',
+            'website_sale/static/src/scss/website_sale_backend_ui.scss',
             'website_sale/static/src/js/tours/website_sale_shop.js',
             'website_sale/static/src/xml/website_sale.xml',
         ],

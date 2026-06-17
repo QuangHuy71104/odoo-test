@@ -38,13 +38,16 @@ Persona:
 - Be factual, concise, and professional.
 - Answer in the same language as the user when possible.
 - Use only the approved corporate context provided in the prompt.
+- Return only the final answer. Do not paste raw source blocks, prompt labels,
+  retrieved context, or fallback instructions.
 
 Grounding rules:
 1. Do not invent facts, procedures, prices, people, salaries, vendors, or policies.
-2. If the context is missing, irrelevant, or not specific enough, answer with the fallback message.
+2. If the context is missing, irrelevant, or not specific enough, output only the fallback message.
 3. Respect the user's access role. Do not reveal HR-only or IT-only content unless it appears in the approved retrieved context for that role.
 4. Do not answer competitor-comparison requests, credential/API-key requests, or restricted salary/payroll questions for unauthorized roles.
 5. Include source titles when giving a substantive answer.
+6. Keep the answer readable with short paragraphs or bullets.
 
 Fallback message:
 I do not have enough approved corporate knowledge context to answer that. Please check the official Odoo Knowledge base or ask the responsible owner.
@@ -56,7 +59,10 @@ Question: {question}
 Approved retrieved context:
 {context}
 
-Write the final answer. If you cannot answer from the approved retrieved context, use the fallback message exactly.
+Write only the final answer for the user.
+- If the context contains a relevant source, answer from it in 2-5 short sentences or bullets.
+- Do not paste the source blocks or the fallback instructions.
+- If the answer is not supported by the context, output only the fallback message exactly.
 """
 
 STOPWORDS = {
@@ -255,7 +261,7 @@ def build_context(docs_with_scores: list[tuple], max_chars: int | None = None) -
                 access_role=access_role,
                 workspace_dimension=workspace,
                 score=round(float(score), 4) if score is not None else None,
-                snippet=content[:240],
+                snippet=content[:700],
             )
         )
 
@@ -308,17 +314,99 @@ def _call_ollama(messages: list[dict], temperature: float, model: str | None) ->
     return response.json()["message"]["content"].strip()
 
 
-def _mock_answer(question: str, sources: list[Source]) -> str:
+def _source_titles(sources: list[Source], limit: int = 3) -> str:
+    titles = []
+    for source in sources:
+        if source.title and source.title not in titles:
+            titles.append(source.title)
+    return ", ".join(titles[:limit])
+
+
+def _clean_snippet(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    cleaned = re.sub(
+        r"\b(Purpose|Problem|Analysis / Root Cause|Verified Solution / SOP Steps|Checklist|Canned Response / Shortcut|Response):",
+        r". \1:",
+        cleaned,
+    )
+    return cleaned.strip(" .")
+
+
+def _extract_key_points(sources: list[Source], max_points: int = 3) -> list[str]:
+    points = []
+    for source in sources:
+        snippet = _clean_snippet(source.snippet)
+        candidates = re.split(r"(?<=[.!?])\s+|\s+\(\d+\)\s+", snippet)
+        for candidate in candidates:
+            point = candidate.strip(" -")
+            if len(point) < 45:
+                continue
+            if point.lower().startswith(("parent workspace", "workspace dimension", "access role", "tags")):
+                continue
+            if point not in points:
+                points.append(point)
+            if len(points) >= max_points:
+                return points
+    return points
+
+
+def _source_grounded_answer(question: str, sources: list[Source]) -> str:
     if not sources:
         return FALLBACK_ANSWER
 
-    source_titles = ", ".join(source.title for source in sources[:3])
-    first = sources[0]
+    points = _extract_key_points(sources)
+    if not points:
+        points = [_clean_snippet(sources[0].snippet)]
+
+    body = "\n".join(f"- {point}" for point in points[:3])
     return (
-        "Mock grounded answer: based on the retrieved corporate knowledge, "
-        f"the most relevant source is '{first.title}'. "
-        f"Key context: {first.snippet}...\n\nSources: {source_titles}"
+        "Based on the approved knowledge base:\n"
+        f"{body}\n\n"
+        f"Source: {_source_titles(sources)}"
     )
+
+
+def _clean_generated_answer(answer: str) -> str:
+    text = answer.strip()
+    if not text:
+        return text
+
+    for marker in ("\nFallback message:", "\nApproved retrieved context:", "\nUser role:", "\nQuestion:"):
+        if marker in text and text.split(marker, 1)[0].strip():
+            text = text.split(marker, 1)[0].strip()
+
+    source_match = re.search(r"\n\s*\[Source\s+\d+\]", text)
+    if source_match and text[: source_match.start()].strip():
+        text = text[: source_match.start()].strip()
+
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _is_fallback_answer(answer: str) -> bool:
+    normalized = re.sub(r"\s+", " ", answer).strip()
+    fallback = re.sub(r"\s+", " ", FALLBACK_ANSWER).strip()
+    return normalized == fallback or fallback in normalized
+
+
+def _has_relevant_source(question: str, sources: list[Source]) -> bool:
+    if not sources:
+        return False
+
+    top_score = sources[0].score
+    if top_score is None or top_score >= float(os.getenv("RAG_EXTRACTIVE_MIN_SCORE", "0.25")):
+        return True
+
+    question_terms = {
+        term
+        for term in re.findall(r"[a-z0-9]+", question.lower())
+        if len(term) > 2 and term not in STOPWORDS
+    }
+    source_terms = set(re.findall(r"[a-z0-9]+", " ".join(source.snippet.lower() for source in sources[:2])))
+    return len(question_terms & source_terms) >= 2
+
+
+def _mock_answer(question: str, sources: list[Source]) -> str:
+    return _source_grounded_answer(question, sources)
 
 
 def generate_answer(
@@ -395,7 +483,7 @@ def ask(
             context="",
         )
 
-    answer, actual_provider = generate_answer(
+    raw_answer, actual_provider = generate_answer(
         question=clean_question,
         user_role=clean_role,
         context=context,
@@ -404,12 +492,18 @@ def ask(
         provider=selected_provider,
         model=model,
     )
-    fallback = FALLBACK_ANSWER in answer
+    answer = _clean_generated_answer(raw_answer)
+    fallback = _is_fallback_answer(answer)
+    fallback_reason = "LLM returned fallback message." if fallback else ""
+    if fallback and actual_provider == "ollama" and _has_relevant_source(clean_question, source_objects):
+        answer = _source_grounded_answer(clean_question, source_objects)
+        fallback = False
+        fallback_reason = ""
 
     return RAGResponse(
         answer=answer,
         fallback=fallback,
-        fallback_reason="LLM returned fallback message." if fallback else "",
+        fallback_reason=fallback_reason,
         provider=actual_provider,
         sources=[asdict(source) for source in source_objects],
         context=context,

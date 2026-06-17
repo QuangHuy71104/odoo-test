@@ -1,0 +1,18 @@
+.o_website_sale_product_form {
+    .btn:hover,
+    .btn:focus,
+    .oe_stat_button:hover,
+    .oe_stat_button:focus,
+    a:hover,
+    a:focus {
+        color: #1f2937;
+    }
+
+    .o_field_widget a:hover,
+    .o_field_widget a:focus,
+    .o_field_many2many_tags .badge:hover,
+    .o_field_many2many_tags .badge:focus {
+        color: #1f2937;
+        text-decoration: none;
+    }
+}
