@@ -88,6 +88,7 @@ class KmsRagLivechatController(http.Controller):
     def _format_livechat_payload(self, question, payload):
         sources = payload.get("sources") or []
         answer = (payload.get("answer") or RAG_FALLBACK).replace("Mock grounded answer: ", "", 1).strip()
+        return Markup(plaintext2html(answer))
         fallback = bool(payload.get("fallback")) or RAG_FALLBACK in answer
         is_vi = self._looks_vietnamese(question)
 
@@ -163,10 +164,10 @@ import rag_engine
 payload = json.loads(sys.stdin.read() or "{}")
 response = rag_engine.ask(
     question=payload.get("question", ""),
-    user_role=payload.get("user_role", "public"),
+    user_role="customer_service",
     top_k=payload.get("top_k", 4),
     temperature=payload.get("temperature", 0.2),
-    provider=payload.get("provider"),
+    provider=payload.get("provider") or "ollama",
 )
 print(json.dumps({
     "answer": response.answer,
@@ -177,19 +178,23 @@ print(json.dumps({
 """
         env = os.environ.copy()
         env.setdefault("EMBEDDING_PROVIDER", "sentence-transformers")
+        env["LLM_PROVIDER"] = "ollama"
+        env["PYTHONIOENCODING"] = "utf-8"
         completed = subprocess.run(
             [str(RAG_PYTHON), "-c", runner],
             cwd=str(RAG_PROJECT_DIR),
             input=json.dumps(
                 {
                     "question": question,
-                    "user_role": "public",
+                    "user_role": "customer_service",
                     "top_k": 4,
                     "temperature": 0.2,
-                    "provider": None,
+                    "provider": "ollama",
                 }
             ),
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=120,
             env=env,

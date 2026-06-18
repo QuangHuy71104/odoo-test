@@ -26,31 +26,67 @@ BASE_DIR = Path(__file__).resolve().parent
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "kms_collection")
 DEFAULT_TOP_K = 4
 DEFAULT_TEMPERATURE = 0.2
-VALID_ROLES = {"public", "it_staff", "hr_manager"}
+VALID_ROLES = {"public", "customer_service", "it_staff", "hr_manager"}
+ROLE_ACCESS = {
+    "public": {"public"},
+    "customer_service": {"public"},
+    "it_staff": {"it_staff", "public"},
+    "hr_manager": {"hr_manager", "public"},
+}
 FALLBACK_ANSWER = (
-    "I do not have enough approved corporate knowledge context to answer that. "
-    "Please check the official Odoo Knowledge base or ask the responsible owner."
+    "I could not find enough information in the Triple H & T knowledge base to answer this question accurately. "
+    "Please create a Helpdesk ticket or ask the responsible department to document this issue."
+)
+RESTRICTED_ACCESS_TEMPLATE = (
+    "Access restricted. This information belongs to {workspace_dimension} and requires {access_role} permission. "
+    "Please contact the authorized manager or system administrator."
 )
 
-MASTER_SYSTEM_PROMPT = """You are the internal Knowledge Management chatbot for KMS Team 02.
+MASTER_SYSTEM_PROMPT = """You are the internal Knowledge Management Assistant for Triple H & T.
 
 Persona:
 - Be factual, concise, and professional.
 - Answer in the same language as the user when possible.
-- Use only the approved corporate context provided in the prompt.
+- Answer ONLY based on the approved retrieved company knowledge context.
+- Do not invent facts, procedures, prices, people, salaries, vendors, or policies.
 - Return only the final answer. Do not paste raw source blocks, prompt labels,
   retrieved context, or fallback instructions.
 
 Grounding rules:
-1. Do not invent facts, procedures, prices, people, salaries, vendors, or policies.
-2. If the context is missing, irrelevant, or not specific enough, output only the fallback message.
-3. Respect the user's access role. Do not reveal HR-only or IT-only content unless it appears in the approved retrieved context for that role.
+1. If the context is missing, irrelevant, or not specific enough, output only the fallback message exactly.
+2. Respect the user's access role. Do not reveal content from an article unless the user's role is allowed to access it.
+3. If access is restricted, output only the restricted-access message exactly.
 4. Do not answer competitor-comparison requests, credential/API-key requests, or restricted salary/payroll questions for unauthorized roles.
-5. Include source titles when giving a substantive answer.
-6. Keep the answer readable with short paragraphs or bullets.
+5. Mention the article title or SOP name used from the retrieved context.
+6. Keep every section grounded in the retrieved context. If one section is not covered by the context, say the knowledge base does not contain enough information for that section.
+
+Required answer format when relevant context is available:
+1. Direct Answer
+Give a short and clear answer to the user's question.
+
+2. Relevant Knowledge Source
+Mention the article title or SOP name used from the retrieved context.
+
+3. Business Context
+Explain when this SOP or knowledge should be used.
+
+4. Recommended Steps
+List the action steps that the employee should follow.
+
+5. Validation Checklist
+List what the employee must check before closing the issue.
+
+6. Risk / Warning
+Mention any important risk, restriction, or escalation point.
+
+7. Final Note
+End with a short practical conclusion. If information is missing, tell the user to contact the responsible department or create a Helpdesk ticket.
+
+Restricted-access message:
+Access restricted. This information belongs to [workspace_dimension] and requires [access_role] permission. Please contact the authorized manager or system administrator.
 
 Fallback message:
-I do not have enough approved corporate knowledge context to answer that. Please check the official Odoo Knowledge base or ask the responsible owner.
+I could not find enough information in the Triple H & T knowledge base to answer this question accurately. Please create a Helpdesk ticket or ask the responsible department to document this issue.
 """
 
 USER_PROMPT_TEMPLATE = """User role: {user_role}
@@ -60,9 +96,10 @@ Approved retrieved context:
 {context}
 
 Write only the final answer for the user.
-- If the context contains a relevant source, answer from it in 2-5 short sentences or bullets.
+- If the context contains a relevant source, answer using the required 7-section format.
 - Do not paste the source blocks or the fallback instructions.
 - If the answer is not supported by the context, output only the fallback message exactly.
+- If the user's role is not allowed to access a retrieved article, output only the restricted-access message with that article's Workspace and Access role.
 """
 
 STOPWORDS = {
@@ -148,11 +185,87 @@ def load_vector_db(persist_dir: str | Path | None = None):
 
 def role_filter(user_role: str) -> dict:
     role = user_role if user_role in VALID_ROLES else "public"
+    if role == "customer_service":
+        return {
+            "$and": [
+                {"access_role": "public"},
+                {"workspace_dimension": "customer_service"},
+            ]
+        }
     if role == "it_staff":
         return {"$or": [{"access_role": "it_staff"}, {"access_role": "public"}]}
     if role == "hr_manager":
         return {"$or": [{"access_role": "hr_manager"}, {"access_role": "public"}]}
     return {"access_role": "public"}
+
+
+def restricted_access_answer(workspace_dimension: str, access_role: str) -> str:
+    return RESTRICTED_ACCESS_TEMPLATE.format(
+        workspace_dimension=workspace_dimension or "unknown",
+        access_role=access_role or "unknown",
+    )
+
+
+def role_can_access(user_role: str, access_role: str) -> bool:
+    clean_role = user_role if user_role in VALID_ROLES else "public"
+    return access_role in ROLE_ACCESS.get(clean_role, {"public"})
+
+
+def detect_restricted_access_request(question: str, user_role: str) -> tuple[str, str] | None:
+    q = question.lower()
+    hr_restricted_terms = [
+        "salary",
+        "payroll",
+        "salary history",
+        "performance warning",
+        "employee hr file",
+        "employee discipline record",
+        "disciplinary",
+        "employee offboarding",
+        "resignation handover",
+        "role transition",
+        "knowledge transfer",
+        "exit interview",
+        "handover checklist",
+        "departing employee",
+        "candidate evaluation",
+        "hiring notes",
+        "interview review",
+        "recruitment decision",
+        "applicant assessment",
+        "confidential hiring",
+        "selection panel",
+    ]
+    if user_role != "hr_manager" and any(term in q for term in hr_restricted_terms):
+        return "hr", "hr_manager"
+
+    it_restricted_terms = [
+        "it onboarding",
+        "it engineer onboarding",
+        "new it engineer",
+        "new engineer setup",
+        "new developer",
+        "developer onboarding",
+        "github account",
+        "repository access",
+        "vpn setup",
+        "ssh key",
+        "admin access",
+        "privilege review",
+        "elevated permission",
+        "system access approval",
+        "temporary admin",
+        "account deactivation",
+        "asset return",
+        "laptop return",
+        "remove access",
+        "disable account",
+        "system access removal",
+    ]
+    if user_role != "it_staff" and any(term in q for term in it_restricted_terms):
+        return "it", "it_staff"
+
+    return None
 
 
 def detect_guardrail_violation(question: str, user_role: str) -> str:
@@ -171,17 +284,6 @@ def detect_guardrail_violation(question: str, user_role: str) -> str:
     reveal_terms = ["show", "reveal", "print", "tell me", "give me", "what is"]
     if any(secret in q for secret in secret_terms) and any(verb in q for verb in reveal_terms):
         return "Credential and secret disclosure requests are not allowed."
-
-    hr_restricted_terms = [
-        "salary",
-        "payroll",
-        "salary history",
-        "performance warning",
-        "employee hr file",
-        "employee discipline record",
-    ]
-    if user_role != "hr_manager" and any(term in q for term in hr_restricted_terms):
-        return "HR salary, payroll, and personnel records require the hr_manager role."
 
     return ""
 
@@ -332,7 +434,138 @@ def _clean_snippet(text: str) -> str:
     return cleaned.strip(" .")
 
 
-def _extract_key_points(sources: list[Source], max_points: int = 3) -> list[str]:
+SECTION_LABELS = (
+    "Purpose",
+    "Problem",
+    "Analysis / Root Cause",
+    "Root Cause",
+    "Verified Solution / SOP Steps",
+    "SOP Steps",
+    "Checklist",
+    "Canned Response / Shortcut",
+    "Response",
+    "New Developer Checklist",
+    "Network Security Incident Response",
+    "Acceptable Workplace Behavior",
+    "HR Disciplinary Procedure",
+    "Payroll Review",
+)
+SECTION_LABEL_PATTERN = "|".join(re.escape(label) for label in SECTION_LABELS)
+
+
+def _truncate_sentence(text: str, max_chars: int = 320) -> str:
+    cleaned = re.sub(r"\s+", " ", text).strip(" .;-")
+    if len(cleaned) <= max_chars:
+        return cleaned
+    truncated = cleaned[:max_chars].rsplit(" ", 1)[0].strip(" .;-")
+    return f"{truncated}."
+
+
+def _missing_section(section_name: str) -> str:
+    return f"The retrieved context does not contain enough information to specify {section_name}."
+
+
+def _format_bullets(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _extract_labeled_text(sources: list[Source], labels: tuple[str, ...]) -> str:
+    for source in sources:
+        text = re.sub(r"\s+", " ", source.snippet).strip()
+        for label in labels:
+            match = re.search(
+                rf"{re.escape(label)}:\s*(.*?)(?=\s+(?:{SECTION_LABEL_PATTERN}):|$)",
+                text,
+                flags=re.IGNORECASE,
+            )
+            if not match:
+                continue
+            value = _truncate_sentence(match.group(1))
+            if len(value) >= 25:
+                return value
+    return ""
+
+
+def _extract_numbered_items_from_text(text: str, max_items: int = 5) -> list[str]:
+    items = []
+    normalized = re.sub(r"\s+", " ", text).strip()
+    for match in re.finditer(r"\(\d+\)\s*(.*?)(?=\s*\(\d+\)|$)", normalized):
+        item = re.split(rf"\s+(?:{SECTION_LABEL_PATTERN}):", match.group(1), maxsplit=1)[0]
+        item = _truncate_sentence(item, 180)
+        if len(item) >= 10 and item not in items:
+            items.append(item)
+        if len(items) >= max_items:
+            break
+    return items
+
+
+def _extract_labeled_items(sources: list[Source], labels: tuple[str, ...], max_items: int = 5) -> list[str]:
+    for source in sources:
+        text = re.sub(r"\s+", " ", source.snippet).strip()
+        for label in labels:
+            match = re.search(
+                rf"{re.escape(label)}:\s*(.*?)(?=\s+(?:{SECTION_LABEL_PATTERN}):|$)",
+                text,
+                flags=re.IGNORECASE,
+            )
+            if not match:
+                continue
+            numbered_items = _extract_numbered_items_from_text(match.group(1), max_items=max_items)
+            if numbered_items:
+                return numbered_items
+
+            sentence_items = [
+                _truncate_sentence(part, 180)
+                for part in re.split(r"(?<=[.!?])\s+|;\s+", match.group(1))
+                if len(part.strip()) >= 25
+            ]
+            if sentence_items:
+                return sentence_items[:max_items]
+    return []
+
+
+def _extract_numbered_items(sources: list[Source], max_items: int = 5) -> list[str]:
+    items = []
+    for source in sources:
+        for item in _extract_numbered_items_from_text(source.snippet, max_items=max_items):
+            if item not in items:
+                items.append(item)
+            if len(items) >= max_items:
+                return items
+    return items
+
+
+def _extract_warning_points(sources: list[Source], max_points: int = 3) -> list[str]:
+    keywords = (
+        "must",
+        "mandatory",
+        "requires",
+        "require",
+        "only",
+        "confidential",
+        "restricted",
+        "escalation",
+        "escalate",
+        "approval",
+        "warning",
+        "never",
+        "not allowed",
+    )
+    warnings = []
+    for source in sources:
+        snippet = _clean_snippet(source.snippet)
+        for sentence in re.split(r"(?<=[.!?])\s+", snippet):
+            candidate = _truncate_sentence(sentence, 220)
+            if len(candidate) < 30:
+                continue
+            if any(keyword in candidate.lower() for keyword in keywords) and candidate not in warnings:
+                warnings.append(candidate)
+            if len(warnings) >= max_points:
+                return warnings
+    return warnings
+
+
+def _extract_key_points(sources: list[Source], max_points: int = 5) -> list[str]:
     points = []
     for source in sources:
         snippet = _clean_snippet(source.snippet)
@@ -355,14 +588,51 @@ def _source_grounded_answer(question: str, sources: list[Source]) -> str:
         return FALLBACK_ANSWER
 
     points = _extract_key_points(sources)
-    if not points:
-        points = [_clean_snippet(sources[0].snippet)]
+    if not points and not any(source.snippet.strip() for source in sources):
+        return FALLBACK_ANSWER
 
-    body = "\n".join(f"- {point}" for point in points[:3])
+    direct_answer = points[0] if points else _missing_section("a direct answer")
+    business_context = (
+        _extract_labeled_text(sources, ("Purpose", "Problem", "Response"))
+        or (points[1] if len(points) > 1 else _missing_section("the business context"))
+    )
+    recommended_steps = (
+        _extract_labeled_items(
+            sources,
+            (
+                "Verified Solution / SOP Steps",
+                "SOP Steps",
+                "New Developer Checklist",
+                "Network Security Incident Response",
+                "HR Disciplinary Procedure",
+            ),
+        )
+        or _extract_numbered_items(sources)
+        or points[:3]
+        or [_missing_section("recommended steps")]
+    )
+    validation_checklist = (
+        _extract_labeled_items(sources, ("Checklist",), max_items=5)
+        or [_missing_section("a validation checklist")]
+    )
+    risk_warning = _extract_warning_points(sources) or [_missing_section("risks, restrictions, or escalation points")]
+
     return (
-        "Based on the approved knowledge base:\n"
-        f"{body}\n\n"
-        f"Source: {_source_titles(sources)}"
+        "1. Direct Answer\n"
+        f"{direct_answer}\n\n"
+        "2. Relevant Knowledge Source\n"
+        f"{_source_titles(sources)}\n\n"
+        "3. Business Context\n"
+        f"{business_context}\n\n"
+        "4. Recommended Steps\n"
+        f"{_format_bullets(recommended_steps[:5])}\n\n"
+        "5. Validation Checklist\n"
+        f"{_format_bullets(validation_checklist[:5])}\n\n"
+        "6. Risk / Warning\n"
+        f"{_format_bullets(risk_warning[:3])}\n\n"
+        "7. Final Note\n"
+        "Use the cited Triple H & T knowledge source as the working guidance. "
+        "If the retrieved information does not fully match the issue, contact the responsible department or create a Helpdesk ticket."
     )
 
 
@@ -370,6 +640,10 @@ def _clean_generated_answer(answer: str) -> str:
     text = answer.strip()
     if not text:
         return text
+
+    for label in ("Fallback message:", "Restricted-access message:"):
+        if text.startswith(label):
+            text = text.split(":", 1)[1].strip()
 
     for marker in ("\nFallback message:", "\nApproved retrieved context:", "\nUser role:", "\nQuestion:"):
         if marker in text and text.split(marker, 1)[0].strip():
@@ -386,6 +660,22 @@ def _is_fallback_answer(answer: str) -> bool:
     normalized = re.sub(r"\s+", " ", answer).strip()
     fallback = re.sub(r"\s+", " ", FALLBACK_ANSWER).strip()
     return normalized == fallback or fallback in normalized
+
+
+REQUIRED_ANSWER_SECTIONS = (
+    "1. Direct Answer",
+    "2. Relevant Knowledge Source",
+    "3. Business Context",
+    "4. Recommended Steps",
+    "5. Validation Checklist",
+    "6. Risk / Warning",
+    "7. Final Note",
+)
+
+
+def _has_required_answer_format(answer: str) -> bool:
+    normalized = re.sub(r"\s+", " ", answer).strip()
+    return all(section in normalized for section in REQUIRED_ANSWER_SECTIONS)
 
 
 def _has_relevant_source(question: str, sources: list[Source]) -> bool:
@@ -454,6 +744,18 @@ def ask(
             context="",
         )
 
+    restricted_request = detect_restricted_access_request(clean_question, clean_role)
+    if restricted_request:
+        workspace_dimension, access_role = restricted_request
+        return RAGResponse(
+            answer=restricted_access_answer(workspace_dimension, access_role),
+            fallback=True,
+            fallback_reason="Access role is not allowed for the requested knowledge.",
+            provider=selected_provider,
+            sources=[],
+            context="",
+        )
+
     violation = detect_guardrail_violation(clean_question, clean_role)
     if violation:
         return RAGResponse(
@@ -483,6 +785,30 @@ def ask(
             context="",
         )
 
+    restricted_sources = [
+        source for source in source_objects if not role_can_access(clean_role, source.access_role)
+    ]
+    if restricted_sources:
+        source = restricted_sources[0]
+        return RAGResponse(
+            answer=restricted_access_answer(source.workspace_dimension, source.access_role),
+            fallback=True,
+            fallback_reason="Retrieved context is restricted for this role.",
+            provider=selected_provider,
+            sources=[],
+            context="",
+        )
+
+    if not _has_relevant_source(clean_question, source_objects):
+        return RAGResponse(
+            answer=FALLBACK_ANSWER,
+            fallback=True,
+            fallback_reason="Retrieved context was not relevant enough for the question.",
+            provider=selected_provider,
+            sources=[],
+            context="",
+        )
+
     raw_answer, actual_provider = generate_answer(
         question=clean_question,
         user_role=clean_role,
@@ -499,6 +825,8 @@ def ask(
         answer = _source_grounded_answer(clean_question, source_objects)
         fallback = False
         fallback_reason = ""
+    if not fallback and actual_provider == "ollama" and not _has_required_answer_format(answer):
+        answer = _source_grounded_answer(clean_question, source_objects)
 
     return RAGResponse(
         answer=answer,

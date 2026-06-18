@@ -143,17 +143,43 @@ class KnowledgeArticle(models.Model):
         to_trash.write({'active': False, 'trashed': True})
 
     def action_restore_from_trash(self):
-        is_manager = self.env.user.has_group('knowledge_ce.knowledge_group_manager')
+        is_manager = self._is_knowledge_manager()
         if not is_manager:
             non_owned = self.filtered(lambda a: a.author_id.id != self.env.user.id)
             if non_owned:
                 raise UserError('You can only restore your own articles.')
-        self.sudo().write({'active': True, 'trashed': False})
+        self.with_context(active_test=False).sudo().write({'active': True, 'trashed': False})
 
     def action_permanent_delete(self):
-        is_manager = self.env.user.has_group('knowledge_ce.knowledge_group_manager')
+        articles = self._get_trash_tree()
+        if not articles:
+            return False
+
+        not_trashed = articles.filtered(lambda a: not a.trashed)
+        if not_trashed:
+            raise UserError('Only articles already in the Trash can be permanently deleted.')
+
+        is_manager = self._is_knowledge_manager()
         if not is_manager:
-            non_owned = self.filtered(lambda a: a.author_id.id != self.env.user.id)
+            non_owned = articles.filtered(lambda a: a.author_id.id != self.env.user.id)
             if non_owned:
                 raise UserError('You can only permanently delete your own articles.')
-        self.sudo().unlink()
+        articles.sudo().unlink()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
+    def _is_knowledge_manager(self):
+        return (
+            self.env.user.has_group('knowledge_ce.knowledge_group_manager')
+            or self.env.user.has_group('base.group_system')
+        )
+
+    def _get_trash_tree(self):
+        Article = self.env['knowledge.article'].with_context(active_test=False)
+        articles = Article.browse(self.ids).exists()
+        for article in articles:
+            if article.parent_path:
+                articles |= Article.search([('parent_path', 'like', article.parent_path + '%')])
+        return articles

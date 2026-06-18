@@ -18,6 +18,7 @@
         <field name="name">Manager</field>
         <field name="category_id" ref="module_knowledge_category"/>
         <field name="implied_ids" eval="[(4, ref('knowledge_group_user'))]"/>
+        <field name="users" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
     </record>
 
     <!-- Make all internal users Knowledge Users by default -->
@@ -47,5 +48,16 @@
         <field name="perm_write" eval="True"/>
         <field name="perm_create" eval="False"/>
         <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="knowledge_article_manager_rule" model="ir.rule">
+        <field name="name">Knowledge Article: Manager Full Access</field>
+        <field name="model_id" ref="knowledge_ce.model_knowledge_article"/>
+        <field name="groups" eval="[(4, ref('knowledge_ce.knowledge_group_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
     </record>
 </odoo>

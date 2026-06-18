@@ -32,13 +32,13 @@ ACCESS_MATRIX_PATH = (BASE_DIR / os.getenv("ACCESS_MATRIX_PATH", "access_matrix.
 # ── Week 11 test seed articles (required for TEST A and TEST B to pass) ───────
 SEED_ARTICLES = [
     {
-        "name": "IT Engineer Onboarding Protocol",
-        "code": "IT-SEC-01",
+        "name": "IT1: IT Engineer Onboarding Protocol",
+        "code": "IT1",
         "workspace_dimension": "it",
         "access_role": "it_staff",
         "tags": ["Onboarding", "IT", "Security"],
         "body": (
-            "<p><strong>IT-SEC-01 - IT Engineer Onboarding Protocol</strong></p>"
+            "<p><strong>IT1 - IT Engineer Onboarding Protocol</strong></p>"
             "<p>Purpose: This SOP defines the standard onboarding process for all new IT "
             "technical hires and developers joining the Engineering team.</p>"
             "<p>Welcome to the Engineering team. Upon arrival, all new IT technical hires must "
@@ -60,13 +60,13 @@ SEED_ARTICLES = [
         ),
     },
     {
-        "name": "Network Security and System Firewall Policy",
-        "code": "IT-SEC-02",
+        "name": "IT2: Network Security and System Firewall Policy",
+        "code": "IT2",
         "workspace_dimension": "it",
         "access_role": "it_staff",
         "tags": ["NetworkSecurity", "Firewall", "IT"],
         "body": (
-            "<p><strong>IT-SEC-02 - Network Security and System Firewall Policy</strong></p>"
+            "<p><strong>IT2 - Network Security and System Firewall Policy</strong></p>"
             "<p>Purpose: This policy defines procedures for maintaining network security and "
             "responding to system safety infractions within the corporate IT environment.</p>"
             "<p>In the event of system safety infractions, technical staff must trigger the "
@@ -88,13 +88,13 @@ SEED_ARTICLES = [
         ),
     },
     {
-        "name": "General Workspace Conduct Guideline",
-        "code": "GEN-01",
+        "name": "GEN1: General Workspace Conduct Guideline",
+        "code": "GEN1",
         "workspace_dimension": "public",
         "access_role": "public",
         "tags": ["General", "Conduct", "Public"],
         "body": (
-            "<p><strong>GEN-01 - General Workspace Conduct Guideline</strong></p>"
+            "<p><strong>GEN1 - General Workspace Conduct Guideline</strong></p>"
             "<p>Purpose: This guideline establishes professional conduct standards expected of "
             "all employees across all departments.</p>"
             "<p>It is our company policy to maintain an open, welcoming environment for all "
@@ -115,13 +115,13 @@ SEED_ARTICLES = [
         ),
     },
     {
-        "name": "HR Payroll and Disciplinary Review Policy",
-        "code": "HR-SEC-01",
+        "name": "HR1: HR Payroll and Disciplinary Review Policy",
+        "code": "HR1",
         "workspace_dimension": "hr",
         "access_role": "hr_manager",
         "tags": ["HR", "Confidential", "Disciplinary"],
         "body": (
-            "<p><strong>HR-SEC-01 - HR Payroll and Disciplinary Review Policy - CONFIDENTIAL</strong></p>"
+            "<p><strong>HR1 - HR Payroll and Disciplinary Review Policy - CONFIDENTIAL</strong></p>"
             "<p>RESTRICTED ACCESS: This document is classified as CONFIDENTIAL and is accessible "
             "only to HR managers and authorized HR personnel.</p>"
             "<p>Purpose: This policy governs payroll management, salary reviews, performance "
@@ -225,10 +225,7 @@ def seed_articles(uid, models):
             }])
             print(f"  [SEEDED]  {art['code']} - {art['name']}")
         else:
-            models.execute_kw(ODOO_DB, uid, ODOO_PASSWORD, "knowledge.article", "write", [
-                [existing_by_name[art["name"]]], values
-            ])
-            print(f"  [UPDATED] {art['code']} - {art['name']}")
+            print(f"  [EXISTS]  {art['code']} - {art['name']} (body preserved)")
 
 
 def fetch_articles(uid, models):

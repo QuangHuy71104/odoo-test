@@ -13,7 +13,7 @@ from rag_engine import VALID_ROLES, ask, resolve_persist_dir
 
 
 def _provider_index(provider: str) -> int:
-    options = ["mock", "openai", "ollama"]
+    options = ["ollama", "mock"]
     return options.index(provider) if provider in options else 0
 
 
@@ -33,9 +33,9 @@ def render_sources(sources: list[dict]) -> None:
             st.caption(source.get("snippet", ""))
 
 
-st.set_page_config(page_title="KMS Team 02 RAG Chatbot", layout="wide")
+st.set_page_config(page_title="Triple H & T Knowledge Assistant", layout="wide")
 
-st.title("KMS Team 02 RAG Chatbot")
+st.title("Triple H & T Knowledge Assistant")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -49,7 +49,7 @@ with st.sidebar:
     env_provider = os.getenv("LLM_PROVIDER", "mock").lower()
     provider = st.selectbox(
         "LLM provider",
-        ["mock", "openai", "ollama"],
+        ["ollama", "mock"],
         index=_provider_index(env_provider),
     )
     model = st.text_input("Model override", value="")
