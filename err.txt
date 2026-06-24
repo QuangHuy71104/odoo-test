@@ -1,0 +1,31 @@
+Exception in thread odoo.service.cron.cron0:
+Traceback (most recent call last):
+Exception in thread odoo.service.cron.cron1:
+Traceback (most recent call last):
+  File "C:\Users\ACER\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+  File "C:\Users\ACER\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\ACER\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self.run()
+  File "C:\Users\ACER\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\University\knowledgeManagementSystem\odoo-test\odoo\service\server.py", line 553, in target
+    self._target(*self._args, **self._kwargs)
+  File "D:\University\knowledgeManagementSystem\odoo-test\odoo\service\server.py", line 553, in target
+    self.cron_thread(i)
+  File "D:\University\knowledgeManagementSystem\odoo-test\odoo\service\server.py", line 535, in cron_thread
+    self.cron_thread(i)
+    _run_cron(cr)
+  File "D:\University\knowledgeManagementSystem\odoo-test\odoo\service\server.py", line 535, in cron_thread
+  File "D:\University\knowledgeManagementSystem\odoo-test\odoo\service\server.py", line 519, in _run_cron
+    _run_cron(cr)
+  File "D:\University\knowledgeManagementSystem\odoo-test\odoo\service\server.py", line 519, in _run_cron
+    pg_conn.poll()
+    pg_conn.poll()
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.

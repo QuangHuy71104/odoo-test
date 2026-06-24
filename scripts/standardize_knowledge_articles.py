@@ -5,7 +5,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 
-BASE_URL = "https://supervision-myrtle-deeper-montreal.trycloudflare.com"
+BASE_URL = "https://sig-poetry-language-insurance.trycloudflare.com"
 MATRIX_PATH = Path(r"D:\University\knowledgeManagementSystem\KMS_TEAM_02_W12\access_matrix.md")
 
 STANDARD_HEADINGS = [

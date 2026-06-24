@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_kms_ai_chatbot" model="ir.actions.client">
+        <field name="name">AI Chatbot</field>
+        <field name="tag">kms_rag_livechat.chatbot_iframe</field>
+        <field name="params">{"chatbot_url": "http://localhost:8501"}</field>
+    </record>
+
+    <menuitem
+        id="menu_kms_ai_chatbot_root"
+        name="AI Chatbot"
+        action="action_kms_ai_chatbot"
+        sequence="5"
+        groups="base.group_user"/>
+</odoo>

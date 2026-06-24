@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates xml:space="preserve">
+    <t t-name="kms_rag_livechat.KmsChatbotIframeAction">
+        <div class="o_kms_chatbot_iframe_action">
+            <iframe
+                class="o_kms_chatbot_iframe"
+                t-att-src="state.chatbotUrl"
+                title="AI Chatbot"/>
+        </div>
+    </t>
+</templates>
